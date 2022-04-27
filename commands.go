@@ -5,7 +5,7 @@ package main
 var commands = map[string][]string{
 	"version": {
 		`uom get "relay/model"`,   // Model of the power controller
-		`uom get "config/version`, // Display the Application (left-side) firmware version
+		`uom get "config/version"`, // Display the Application (left-side) firmware version
 		`uom get "relay/version"`, // Display the AVR/maintenance (right-side) firmware version
 	},
 	// Relays (0 indexed)
