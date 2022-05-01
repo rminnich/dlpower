@@ -23,57 +23,6 @@ type relay struct {
 	CycleDelay string `json:"cycle_delay"`
 }
 
-func init() {
-	// ssh pdu uom get relay/outlets
-	t := `[{
-	"name": "AMD developer board",
-	"transient_state": false,
-	"critical": false,
-	"physical_state": false,
-	"locked": false,
-	"state": false,
-	"cycle_delay": null
-}, {
-	"name": "trembyle",
-	"transient_state": false,
-	"critical": false,
-	"physical_state": false,
-	"locked": false,
-	"state": false,
-	"cycle_delay": null
-}]
-`
-
-	u := `{
-        "name": "AMD developer board",
-        "transient_state": false,
-        "critical": false,
-        "physical_state": false,
-        "locked": false,
-        "state": false,
-        "cycle_delay": null
-}
-`
-	raw := `[{"name":"AMD developer board","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"trembyle","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"Outlet 3","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"Outlet 4","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"t510","cycle_delay":null,"critical":false,"transient_state":true,"physical_state":true,"state":true,"locked":false},{"name":"honeycomb","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"a300","cycle_delay":null,"critical":false,"transient_state":true,"physical_state":true,"state":true,"locked":false},{"name":"a300 vga","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false}]`
-	rawone := `{"name":"AMD developer board","critical":false,"transient_state":false,"physical_state":false,"cycle_delay":null,"locked":false,"state":false}`
-	var r relay
-	if err := json.Unmarshal([]byte(u), &r); err != nil {
-		log.Fatal("fucku %v", err)
-	}
-
-	if err := json.Unmarshal([]byte(rawone), &r); err != nil {
-		log.Fatal("fuckraw %v", err)
-	}
-
-	var rr []relay
-	if err := json.Unmarshal([]byte(raw), &rr); err != nil {
-		log.Fatal("fuckraw %v", err)
-	}
-	if err := json.Unmarshal([]byte(t), &rr); err != nil {
-		log.Fatal("fuckt %v", err)
-	}
-}
-
 // PDU defines a PDU.
 type PDU struct {
 	config  ssh.ClientConfig

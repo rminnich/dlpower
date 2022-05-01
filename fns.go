@@ -6,9 +6,7 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -92,50 +90,6 @@ func (c *PDU) Dial() error {
 	return nil
 }
 
-// Start implements exec.Start for CPU.
-func (c *PDU) Start() error {
-	var err error
-	if c.client == nil {
-		return fmt.Errorf("PDU has no client")
-	}
-	if c.session, err = c.client.NewSession(); err != nil {
-		return err
-	}
-	if false {
-		if err := c.SetEnv(c.Env...); err != nil {
-			return err
-		}
-	}
-	if c.Stdout, err = c.session.StdoutPipe(); err != nil {
-		return err
-	}
-	if c.Stderr, err = c.session.StderrPipe(); err != nil {
-		return err
-	}
-	V("call session.Start(%s)", c.cmd)
-	if err := c.session.Start(c.cmd); err != nil {
-		return fmt.Errorf("Failed to run %v: %v", c, err.Error())
-	}
-	go io.Copy(os.Stdout, c.Stdout)
-	go io.Copy(os.Stderr, c.Stderr)
-
-	return nil
-}
-
-// Wait waits for a PDU to finish.
-func (c *PDU) Wait() error {
-	err := c.session.Wait()
-	return err
-}
-
-// Run runs a command with Start, and waits for it to finish with Wait.
-func (c *PDU) Run() error {
-	if err := c.Start(); err != nil {
-		return err
-	}
-	return c.Wait()
-}
-
 // GetHostName reads the host name from the ssh config file,
 // if needed. If it is not found, the host name is returned.
 func GetHostName(host string) string {
@@ -146,27 +100,7 @@ func GetHostName(host string) string {
 	return host
 }
 
-// Signal implements ssh.Signal
-func (c *PDU) Signal(s ssh.Signal) error {
-	return c.session.Signal(s)
-}
-
-// Outputs returns a slice of bytes.Buffer for stdout and stderr,
-// and an error if either had trouble being read.
-func (c *PDU) Outputs() ([]bytes.Buffer, error) {
-	var r [2]bytes.Buffer
-	var err error
-	if _, err = io.Copy(&r[0], c.Stdout); err != nil && err != io.EOF {
-		err = fmt.Errorf("Stdout: '%v'", err)
-	}
-	if _, err = io.Copy(&r[1], c.Stderr); err != nil && err != io.EOF {
-		err = fmt.Errorf("%sStderr: '%v'", err.Error(), err)
-	}
-	return r[:], err
-}
-
-// Command implements exec.Command. The required parameter is a host.
-//
+// Command creates a PDU
 func Command(host string) *PDU {
 	return &PDU{
 		Host:     host,
