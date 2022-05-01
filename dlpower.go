@@ -3,15 +3,76 @@
 package main
 
 import (
-	"bytes"
+	"encoding/json"
 	"flag"
-	"fmt"
 	"io"
 	"log"
-	"os"
+	"sync"
 
 	"golang.org/x/crypto/ssh"
 )
+
+type relay struct {
+	Host       string
+	Name       string `json:"name"`
+	Tstate     bool   `json:"transient_state"`
+	Critical   bool   `json:"critical"`
+	Pstate     bool   `json:"physical_state"`
+	Locked     bool   `json:"locked"`
+	State      bool   `json:"state"`
+	CycleDelay string `json:"cycle_delay"`
+}
+
+func init() {
+	// ssh pdu uom get relay/outlets
+	t := `[{
+	"name": "AMD developer board",
+	"transient_state": false,
+	"critical": false,
+	"physical_state": false,
+	"locked": false,
+	"state": false,
+	"cycle_delay": null
+}, {
+	"name": "trembyle",
+	"transient_state": false,
+	"critical": false,
+	"physical_state": false,
+	"locked": false,
+	"state": false,
+	"cycle_delay": null
+}]
+`
+
+	u := `{
+        "name": "AMD developer board",
+        "transient_state": false,
+        "critical": false,
+        "physical_state": false,
+        "locked": false,
+        "state": false,
+        "cycle_delay": null
+}
+`
+	raw := `[{"name":"AMD developer board","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"trembyle","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"Outlet 3","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"Outlet 4","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"t510","cycle_delay":null,"critical":false,"transient_state":true,"physical_state":true,"state":true,"locked":false},{"name":"honeycomb","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false},{"name":"a300","cycle_delay":null,"critical":false,"transient_state":true,"physical_state":true,"state":true,"locked":false},{"name":"a300 vga","cycle_delay":null,"critical":false,"transient_state":false,"physical_state":false,"state":false,"locked":false}]`
+	rawone := `{"name":"AMD developer board","critical":false,"transient_state":false,"physical_state":false,"cycle_delay":null,"locked":false,"state":false}`
+	var r relay
+	if err := json.Unmarshal([]byte(u), &r); err != nil {
+		log.Fatal("fucku %v", err)
+	}
+
+	if err := json.Unmarshal([]byte(rawone), &r); err != nil {
+		log.Fatal("fuckraw %v", err)
+	}
+
+	var rr []relay
+	if err := json.Unmarshal([]byte(raw), &rr); err != nil {
+		log.Fatal("fuckraw %v", err)
+	}
+	if err := json.Unmarshal([]byte(t), &rr); err != nil {
+		log.Fatal("fuckt %v", err)
+	}
+}
 
 // PDU defines a PDU.
 type PDU struct {
@@ -37,41 +98,73 @@ var (
 	V = func(string, ...interface{}) {}
 )
 
-func one(host, cmd string) (bytes.Buffer, bytes.Buffer, error) {
-	c := Command("pdu")
+func one(host, cmd string) ([]byte, error) {
+	c := Command(host)
 	V("c %v", c)
 	c.cmd = cmd
 	if err := c.Dial(); err != nil {
 		log.Fatal(err)
 	}
-	if err := c.Start(); err != nil {
-		log.Fatal(err)
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, err
 	}
-	b, err := c.Outputs()
-	return b[0], b[1], err
+	return session.CombinedOutput(cmd)
 }
 
 func main() {
 	flag.Parse()
-	a := flag.Args()
-	if len(a) < 2 {
-		log.Fatalf("Usage: %q command at-least-one-port", os.Args[0])
-	}
-	c, ok := commands[a[0]]
-	if !ok {
-		log.Fatalf("%q: unknown command", a[0])
-	}
-	// Put the ports in the inner loop, commands on the outer loop,
-	// to give things time to set.
-	for _, cmd := range c {
-		for _, port := range a[1:] {
-			stdout, stderr, err := one("pdu", fmt.Sprintf(cmd, port))
+	var relays []relay
+	var m sync.Mutex
+	var wg sync.WaitGroup
+	for _, host := range []string{"pdu", "pdu2"} {
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			o, err := one(host, "uom get relay/outlets")
 			if err != nil {
-				log.Printf("%q: %q: %q, %v", cmd, port, stderr.String(), err)
-				continue
+				log.Fatalf("%v: [%v, %v]", host, o, err)
 			}
-			//fmt.Printf("%q: %q: %q", cmd, port, stdout.String())
-			fmt.Printf("%s", stdout.String())
-		}
+			var rr []relay
+			log.Printf("%v: unmarshall %v", host, string(o))
+			if err := json.Unmarshal(o, &rr); err != nil {
+				log.Fatalf("unmarshalling %v: %v", string(o), err)
+			}
+			for i := range rr {
+				rr[i].Host = host
+			}
+			m.Lock()
+			relays = append(relays, rr...)
+			m.Unlock()
+		}(host)
 	}
+	wg.Wait()
+	log.Printf("%d relays %v", len(relays), relays)
+
 }
+
+//func old() {
+//	flag.Parse()
+//	a := flag.Args()
+//	if len(a) < 3 {
+//		log.Fatalf("Usage: %q pdu command at-least-one-port", os.Args[0])
+//	}
+//	pdu := a[0]
+//	c, ok := commands[a[1]]
+//	if !ok {
+//		log.Fatalf("%q: unknown command", a[1])
+//	}
+//	// Put the ports in the inner loop, commands on the outer loop,
+//	// to give things time to set.
+//	for _, cmd := range c {
+//		for _, port := range a[2:] {
+//			stdout, stderr, err := one(pdu, fmt.Sprintf(cmd, port))
+//			if err != nil {
+//				log.Printf("%q: %q: %q, %v", cmd, port, stderr.String(), err)
+//				continue
+//			}
+//			//fmt.Printf("%q: %q: %q", cmd, port, stdout.String())
+//			fmt.Printf("%s", stdout.String())
+//		}
+//	}
+//}
