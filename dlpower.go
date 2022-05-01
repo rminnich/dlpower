@@ -43,6 +43,7 @@ type PDU struct {
 }
 
 var (
+	debug = flag.Bool("d", false, "enable debugging")
 	// V is the printer for debug messages.
 	V = func(string, ...interface{}) {}
 )
@@ -63,6 +64,9 @@ func one(host, cmd string) ([]byte, error) {
 
 func main() {
 	flag.Parse()
+	if *debug {
+		V = log.Printf
+	}
 	var relays []relay
 	var m sync.Mutex
 	var wg sync.WaitGroup
@@ -75,7 +79,7 @@ func main() {
 				log.Fatalf("%v: [%v, %v]", host, o, err)
 			}
 			var rr []relay
-			log.Printf("%v: unmarshall %v", host, string(o))
+			V("%v: unmarshall %v", host, string(o))
 			if err := json.Unmarshal(o, &rr); err != nil {
 				log.Fatalf("unmarshalling %v: %v", string(o), err)
 			}
@@ -88,32 +92,6 @@ func main() {
 		}(host)
 	}
 	wg.Wait()
-	log.Printf("%d relays %v", len(relays), relays)
+	V("%d relays %v", len(relays), relays)
 
 }
-
-//func old() {
-//	flag.Parse()
-//	a := flag.Args()
-//	if len(a) < 3 {
-//		log.Fatalf("Usage: %q pdu command at-least-one-port", os.Args[0])
-//	}
-//	pdu := a[0]
-//	c, ok := commands[a[1]]
-//	if !ok {
-//		log.Fatalf("%q: unknown command", a[1])
-//	}
-//	// Put the ports in the inner loop, commands on the outer loop,
-//	// to give things time to set.
-//	for _, cmd := range c {
-//		for _, port := range a[2:] {
-//			stdout, stderr, err := one(pdu, fmt.Sprintf(cmd, port))
-//			if err != nil {
-//				log.Printf("%q: %q: %q, %v", cmd, port, stderr.String(), err)
-//				continue
-//			}
-//			//fmt.Printf("%q: %q: %q", cmd, port, stdout.String())
-//			fmt.Printf("%s", stdout.String())
-//		}
-//	}
-//}
