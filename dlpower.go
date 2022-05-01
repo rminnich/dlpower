@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"regexp"
+	"strings"
 	"sync"
 
 	"golang.org/x/crypto/ssh"
@@ -15,6 +17,7 @@ import (
 
 type relay struct {
 	Host       string
+	number     int
 	Name       string `json:"name"`
 	Tstate     bool   `json:"transient_state"`
 	Critical   bool   `json:"critical"`
@@ -44,7 +47,6 @@ type PDU struct {
 }
 
 var (
-	debug = flag.Bool("d", false, "enable debugging")
 	// V is the printer for debug messages.
 	V = func(string, ...interface{}) {}
 )
@@ -63,28 +65,28 @@ func one(host, cmd string) ([]byte, error) {
 	return session.CombinedOutput(cmd)
 }
 
-func main() {
-	flag.Parse()
-	if *debug {
-		V = log.Printf
-	}
+func getRelays(hosts ...string) ([]relay, error) {
 	var relays []relay
 	var m sync.Mutex
 	var wg sync.WaitGroup
-	for _, host := range []string{"pdu", "pdu2"} {
+	echan := make(chan error)
+	for _, host := range hosts {
 		wg.Add(1)
 		go func(host string) {
 			defer wg.Done()
 			o, err := one(host, "uom get relay/outlets")
 			if err != nil {
-				log.Fatalf("%v: [%v, %v]", host, o, err)
+				echan <- fmt.Errorf("%v: [%v, %s]", host, o, err)
+				return
 			}
 			var rr []relay
 			V("%v: unmarshall %v", host, string(o))
 			if err := json.Unmarshal(o, &rr); err != nil {
-				log.Fatalf("unmarshalling %v: %v", string(o), err)
+				echan <- fmt.Errorf("unmarshalling %v: %w", string(o), err)
+				return
 			}
 			for i := range rr {
+				rr[i].number = i
 				rr[i].Host = host
 			}
 			m.Lock()
@@ -93,10 +95,76 @@ func main() {
 		}(host)
 	}
 	wg.Wait()
+	close(echan)
+	var errcount int
+	for i := range echan {
+		log.Printf("err %v", i)
+		errcount++
+	}
+	return relays, nil
+}
+func main() {
+	var (
+		debug  = flag.Bool("d", false, "enable debugging")
+		dryrun = flag.Bool("dryrun", false, "dryrun mode")
+	)
+	flag.Parse()
+
+	if *debug {
+		V = log.Printf
+	}
+	relays, err := getRelays("pdu", "pdu2")
+	if err != nil {
+		log.Fatal(err)
+	}
 	V("%d relays %v", len(relays), relays)
-	if len(flag.Args()) == 0 {
+	a := flag.Args()
+	if len(a) == 0 {
 		for _, r := range relays {
 			fmt.Printf("Host: %v, Name: %v\n", r.Host, r.Name)
+		}
+		return
+	}
+	// If the argv is just a command, the pattern is .
+	pat := "."
+	if len(a) > 1 {
+		pat = strings.Join(a[1:], "|")
+	}
+	relay := regexp.MustCompile(pat)
+
+	cmd := a[0]
+	var printer func(relay int) string
+	switch cmd {
+	case "on":
+		printer = func(relay int) string {
+			return fmt.Sprintf("uom set relay/outlets/%d/transient_state true", relay)
+		}
+	case "off":
+		printer = func(relay int) string {
+			return fmt.Sprintf("uom set relay/outlets/%d/transient_state false", relay)
+		}
+	case "cycle":
+		printer = func(relay int) string {
+			return fmt.Sprintf("uom invoke relay/outlets/%d/cycle", relay)
+		}
+	default:
+		log.Fatalf("%s is not a valid command: use on of on, off, cycle", cmd)
+	}
+
+	for _, r := range relays {
+		if !relay.MatchString(r.Name) {
+			continue
+		}
+		if *dryrun {
+			log.Printf("[dryrun]: %v: relay %v(%d): %v", r.Host, r.Name, r.number, printer(r.number))
+			continue
+		}
+		o, err := one(r.Host, printer(r.number))
+		if err != nil {
+			log.Printf("%v: relay %v(%d): %v, %v", r.Host, r.Name, r.number, string(o), err)
+		}
+		if *debug {
+			log.Printf("%v: relay %v(%d): %v", r.Host, r.Name, r.number, string(o))
 		}
 	}
 

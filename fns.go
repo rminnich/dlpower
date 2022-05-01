@@ -29,6 +29,8 @@ func (c *PDU) UserKeyConfig() error {
 		}
 	}
 	// The kf will always be non-zero at this point.
+	// We won't need this one ssh_config is fixed
+	// or we give up and fork it ...
 	if strings.HasPrefix(kf, "~/") {
 		kf = filepath.Join(os.Getenv("HOME"), kf[1:])
 	}
