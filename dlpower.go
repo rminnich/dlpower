@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"sync"
@@ -93,5 +94,10 @@ func main() {
 	}
 	wg.Wait()
 	V("%d relays %v", len(relays), relays)
+	if len(flag.Args()) == 0 {
+		for _, r := range relays {
+			fmt.Printf("Host: %v, Name: %v\n", r.Host, r.Name)
+		}
+	}
 
 }
