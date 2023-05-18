@@ -16,15 +16,33 @@ import (
 )
 
 type relay struct {
-	Host       string
-	number     int
-	Name       string `json:"name"`
-	Tstate     bool   `json:"transient_state"`
-	Critical   bool   `json:"critical"`
-	Pstate     bool   `json:"physical_state"`
-	Locked     bool   `json:"locked"`
+	Host   string
+	Name   string `json:"name"`
+	number int
+
 	State      bool   `json:"state"`
+	Pstate     bool   `json:"physical_state"`
+	Tstate     bool   `json:"transient_state"`
+	Locked     bool   `json:"locked"`
+	Critical   bool   `json:"critical"`
 	CycleDelay string `json:"cycle_delay"`
+}
+
+func choice(b bool, t, f string) string {
+	if b {
+		return t
+	}
+	return f
+}
+
+func (r *relay) String() string {
+	current := choice(r.State, "on,", "off,")
+	por := choice(r.Pstate, "PS:on,", "PS:off,")
+	transient := choice(r.Tstate, "TS:on,", "TS:off,")
+	locked := choice(r.Locked, "Locked,", "Unlocked,")
+	critical := choice(r.Critical, "Critical,", "")
+	delay := choice(len(r.CycleDelay) > 0, fmt.Sprintf("CycleDelay:%s", r.CycleDelay), "CycleDelay:0")
+	return fmt.Sprintf("%s:%q(%d):"+current+por+transient+locked+critical+delay, r.Host, r.Name, r.number)
 }
 
 // PDU defines a PDU.
@@ -121,7 +139,8 @@ func main() {
 	a := flag.Args()
 	if len(a) == 0 {
 		for _, r := range relays {
-			fmt.Printf("Host: %v, Name: %v\n", r.Host, r.Name)
+			V("%v", r)
+			fmt.Printf("%s\n", r.String())
 		}
 		return
 	}
